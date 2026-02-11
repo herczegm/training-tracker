@@ -161,3 +161,19 @@ export async function duplicateLineup(input: {
   if (error) throw error;
   return (Array.isArray(data) ? data[0] : data) as LineupRow;
 }
+
+export async function listEventLineups(eventId: string): Promise<LineupRow[]> {
+  const { data, error } = await supabase
+    .from('lineups')
+    .select('*')
+    .eq('event_id', eventId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as LineupRow[];
+}
+
+export async function getLatestEventLineup(eventId: string): Promise<LineupRow | null> {
+  const rows = await listEventLineups(eventId);
+  return rows[0] ?? null;
+}

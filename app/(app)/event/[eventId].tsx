@@ -12,14 +12,12 @@ import { listTeamPeople, type TeamPerson } from '../../../src/db/teamPeople';
 import {
   createLineupFromTemplate,
   clearLineupSlot,
-  getLineupByEvent,
-  listLineupSlots,
+  getLatestEventLineup,
   listTemplates,
   setLineupLocked,
   setLineupSlot,
   listLineupSlotsLabeled,
   type LineupRow,
-  type LineupSlotRow,
   type TemplateRow,
   type LabeledLineupSlotRow,
 } from '../../../src/db/lineups';
@@ -69,7 +67,7 @@ export default function EventDetail() {
     const ppl = await listTeamPeople(teamId);
     setPeople(ppl);
 
-    const l = await getLineupByEvent(ev.id);
+    const l = await getLatestEventLineup(ev.id);
     setLineup(l);
 
     if (l) {
@@ -194,8 +192,11 @@ export default function EventDetail() {
     try {
       setLoading(true);
       await setLineupLocked(lineup.id, !lineup.locked_at);
-      const fresh = await getLineupByEvent(eventId);
+      const fresh = await getLatestEventLineup(eventId);
       setLineup(fresh);
+      if (fresh) {
+        setLineupSlots(await listLineupSlotsLabeled(fresh.id));
+      }
     } catch (e: any) {
       Alert.alert('Hiba', e?.message ?? 'Nem sikerült lockolni');
     } finally {
