@@ -107,6 +107,13 @@ export default function TeamHome() {
           <Text style={{ fontWeight: '700' }}>Lineupok</Text>
         </Pressable>
       </Link>
+
+      <Link href={{ pathname: '/(app)/team/[teamId]/roster', params: { teamId } }} asChild>
+        <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}>
+          <Text style={{ fontWeight: '700' }}>Roster</Text>
+        </Pressable>
+      </Link>
+
     </View>
   );
 }
