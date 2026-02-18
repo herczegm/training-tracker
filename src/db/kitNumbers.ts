@@ -25,3 +25,16 @@ export async function clearKitNumber(input: { teamId: string; kitId: string; use
   });
   if (error) throw error;
 }
+
+export async function getKitNumber(input: { teamId: string; kitId: string; userId: string }) {
+  const { data, error } = await supabase
+    .from('team_kit_numbers')
+    .select('jersey_number')
+    .eq('team_id', input.teamId)
+    .eq('kit_id', input.kitId)
+    .eq('user_id', input.userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.jersey_number ?? null;
+}

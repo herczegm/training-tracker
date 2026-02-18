@@ -1,26 +1,29 @@
 import { getMyRole } from '@/src/db/roles';
 import { listEventRsvpsWithNames, type CoachRsvpRow } from '@/src/db/rsvpsCoach';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, Text, View } from 'react-native';
 import { getMyRsvp, upsertMyRsvp } from '../../../src/db/rsvps';
 import { getEventSummary, type RsvpSummary } from '../../../src/db/rsvpSummary';
 import type { EventRow, RsvpRow } from '../../../src/db/types';
 import { supabase } from '../../../src/lib/supabase';
 
-import { listTeamPeople, type TeamPerson } from '../../../src/db/teamPeople';
+import { listEventRoster, type EventRosterRow } from '@/src/db/eventRoster';
 import {
-  createLineupFromTemplate,
   clearLineupSlot,
+  createLineupFromTemplate,
   getLatestEventLineup,
+  listLineupSlotsLabeled,
   listTemplates,
   setLineupLocked,
   setLineupSlot,
-  listLineupSlotsLabeled,
+  listTeamDefaultLineups,
+  duplicateLineup,
+  type LabeledLineupSlotRow,
   type LineupRow,
   type TemplateRow,
-  type LabeledLineupSlotRow,
 } from '../../../src/db/lineups';
+import { type TeamPerson } from '../../../src/db/teamPeople';
 
 export default function EventDetail() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
@@ -43,6 +46,8 @@ export default function EventDetail() {
   const [people, setPeople] = useState<TeamPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeSlotKey, setActiveSlotKey] = useState<string | null>(null);
+  const [eventRoster, setEventRoster] = useState<EventRosterRow[]>([]);
+  const [showDeclined, setShowDeclined] = useState(false);
 
   const loadLineupBlock = async (ev: EventRow, teamRole: typeof role) => {
     // csak coach/admin + match esetén
@@ -63,9 +68,15 @@ export default function EventDetail() {
       return;
     }
 
-    const teamId = ev.team_id!;
-    const ppl = await listTeamPeople(teamId);
-    setPeople(ppl);
+    const ppl = await listEventRoster(ev.id);
+    setEventRoster(ppl);
+    setPeople(
+      ppl.map((x) => ({
+        user_id: x.user_id,
+        display_name: x.display_name,
+        role: 'player' as const,
+      }))
+    );
 
     const l = await getLatestEventLineup(ev.id);
     setLineup(l);
@@ -204,6 +215,45 @@ export default function EventDetail() {
     }
   };
 
+  const filteredPeople = useMemo(() => {
+    const base = eventRoster.filter((p) => p.is_active);
+    const filtered = showDeclined ? base : base.filter((p) => p.rsvp_status !== 'no');
+    return filtered.map((x) => ({
+      user_id: x.user_id,
+      display_name: x.display_name,
+      role: 'player' as const,
+    }));
+  }, [eventRoster, showDeclined]);
+
+  const createFromDefault = async () => {
+    if (!event || !eventId) return;
+    try {
+      setLoading(true);
+
+      const defaults = await listTeamDefaultLineups(event.team_id!);
+      if (defaults.length === 0) {
+        Alert.alert('Nincs default lineup', 'Hozz létre előbb egy team default lineupot (event nélkül).');
+        return;
+      }
+
+      // most egyszerű: a legfrissebbet duplikáljuk
+      const src = defaults[0];
+
+      const l = await duplicateLineup({
+        sourceLineupId: src.id,
+        targetEventId: eventId,
+        targetFormation: null,
+      });
+
+      setLineup(l);
+      setLineupSlots(await listLineupSlotsLabeled(l.id));
+    } catch (e: any) {
+      Alert.alert('Hiba', e?.message ?? 'Nem sikerült duplikálni');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading && !event) {
     return (
       <View style={{ flex: 1, padding: 20, justifyContent: 'center' }}>
@@ -296,11 +346,27 @@ export default function EventDetail() {
                   >
                     <Text style={{ color: '#fff', fontWeight: '800' }}>Lineup létrehozása</Text>
                   </Pressable>
+
+                  <Pressable
+                    onPress={createFromDefault}
+                    disabled={loading}
+                    style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '800' }}>Default lineup átmásolása</Text>
+                  </Pressable>
                 </>
               )}
             </>
           ) : (
             <>
+              <Pressable
+                onPress={() => setShowDeclined((v) => !v)}
+                style={{ padding: 10, borderWidth: 1, borderRadius: 12, alignItems: 'center', marginBottom: 10 }}
+              >
+                <Text style={{ fontWeight: '800' }}>
+                  {showDeclined ? 'NO-k elrejtése' : 'NO-k megjelenítése'}
+                </Text>
+              </Pressable>
               <Pressable
                 onPress={toggleLock}
                 disabled={loading}
@@ -314,15 +380,14 @@ export default function EventDetail() {
               ) : (
                 <View style={{ gap: 8 }}>
                   {lineupSlots.map((s) => {
-                    const name = s.user_id
-                      ? people.find((p) => p.user_id === s.user_id)?.display_name ?? s.user_id
-                      : '—';
+                    const name = s.user_id ? (s.display_name ?? s.user_id) : '—';
+                    const num = s.user_id ? (s.jersey_number != null ? `#${s.jersey_number}` : '') : '';
                     const disabled = !!lineup.locked_at;
 
                     return (
                       <View key={s.slot_key} style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 6 }}>
                         <Text style={{ fontWeight: '900' }}>{s.label}</Text>
-                        <Text style={{ color: '#444' }}>Játékos: {name}</Text>
+                        <Text style={{ color: '#444' }}>Játékos: {num} {name}</Text>
 
                         <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                           <Pressable
@@ -363,7 +428,7 @@ export default function EventDetail() {
                 <Text style={{ fontSize: 18, fontWeight: '900', marginBottom: 10 }}>Válassz játékost</Text>
 
                 <FlatList
-                  data={people}
+                  data={filteredPeople}
                   keyExtractor={(p) => p.user_id}
                   renderItem={({ item }) => (
                     <Pressable

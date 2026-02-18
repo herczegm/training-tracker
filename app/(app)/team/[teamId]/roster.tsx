@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { Link, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { getMyRole } from '../../../../src/db/roles';
@@ -45,29 +45,41 @@ export default function TeamRosterScreen() {
         <Text style={{ color: '#666' }}>Nincs adat.</Text>
       ) : (
         <View style={{ gap: 10 }}>
-          {rows.map((p) => (
-            <View key={p.user_id} style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 6 }}>
-              <Text style={{ fontWeight: '900', fontSize: 16 }}>
-                {p.display_name ?? p.user_id} {p.role !== 'player' ? `(${p.role})` : ''}
-              </Text>
+              {rows.map((p) => {
+                const card = (
+                  <View style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 6 }}>
+                    <Text style={{ fontWeight: '900', fontSize: 16 }}>
+                      {p.display_name ?? p.user_id} {p.role !== 'player' ? `(${p.role})` : ''}
+                    </Text>
 
-              <Text style={{ color: '#444' }}>Mezszám: {p.jersey_number ?? '—'}</Text>
-              <Text style={{ color: '#444' }}>Aktív: {p.is_active === false ? 'nem' : 'igen'}</Text>
+                    <Text style={{ color: '#444' }}>Mezszám: {p.jersey_number ?? '—'}</Text>
+                    <Text style={{ color: '#444' }}>Aktív: {p.is_active === false ? 'nem' : 'igen'}</Text>
 
-              <Text style={{ color: '#444' }}>
-                Posztok:{' '}
-                {p.positions?.length
-                  ? p.positions.map((x) => x.code).join(', ')
-                  : '—'}
-              </Text>
+                    <Text style={{ color: '#444' }}>
+                      Posztok:{' '}
+                      {p.positions?.length ? p.positions.map((x) => x.code).join(', ') : '—'}
+                    </Text>
 
-              {canEdit && p.role === 'player' && (
-                <Text style={{ color: '#666' }}>
-                  (Szerkesztés UI következő lépésben)
-                </Text>
-              )}
-            </View>
-          ))}
+                    {canEdit && p.role === 'player' && (
+                      <Text style={{ color: '#666' }}>Kattints a szerkesztéshez</Text>
+                    )}
+                  </View>
+                );
+
+                if (canEdit && p.role === 'player') {
+                  return (
+                    <Link
+                      key={p.user_id}
+                      href={{ pathname: '/(app)/team/[teamId]/roster/[userId]', params: { teamId, userId: p.user_id } }}
+                      asChild
+                    >
+                      <Pressable>{card}</Pressable>
+                    </Link>
+                  );
+                }
+
+                return <View key={p.user_id}>{card}</View>;
+              })}
         </View>
       )}
     </View>

@@ -28,6 +28,19 @@ export type TemplateSlot = {
   position_id: number | null;
 };
 
+export type LabeledLineupSlotRow = {
+  lineup_id: string;
+  slot_key: string;
+  label: string;
+  user_id: string | null;
+  position_id: number | null;
+  slot_order: number;
+  jersey_number: number | null;
+  display_name: string | null;
+  position_code: string | null;
+  position_name: string | null;
+};
+
 export async function listTemplates(sport: string = 'generic'): Promise<TemplateRow[]> {
   const { data, error } = await supabase
     .from('lineup_templates')
@@ -37,15 +50,6 @@ export async function listTemplates(sport: string = 'generic'): Promise<Template
   if (error) throw error;
   return (data ?? []) as TemplateRow[];
 }
-
-export type LabeledLineupSlotRow = {
-  lineup_id: string;
-  slot_key: string;
-  label: string;
-  user_id: string | null;
-  position_id: number | null;
-  slot_order: number;
-};
 
 export async function listTemplateSlots(templateId: string): Promise<TemplateSlot[]> {
   const { data, error } = await supabase
@@ -138,7 +142,7 @@ export async function getLineupById(lineupId: string): Promise<LineupRow> {
 
 export async function listLineupSlotsLabeled(lineupId: string): Promise<LabeledLineupSlotRow[]> {
   const { data, error } = await supabase
-    .from('lineup_slots_labeled')
+    .from('lineup_slots_labeled_v2')
     .select('lineup_id,slot_key,label,user_id,position_id,slot_order')
     .eq('lineup_id', lineupId)
     .order('slot_order');
@@ -176,4 +180,16 @@ export async function listEventLineups(eventId: string): Promise<LineupRow[]> {
 export async function getLatestEventLineup(eventId: string): Promise<LineupRow | null> {
   const rows = await listEventLineups(eventId);
   return rows[0] ?? null;
+}
+
+export async function listTeamDefaultLineups(teamId: string): Promise<LineupRow[]> {
+  const { data, error } = await supabase
+    .from('lineups')
+    .select('*')
+    .eq('team_id', teamId)
+    .is('event_id', null)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as LineupRow[];
 }

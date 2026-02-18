@@ -64,3 +64,12 @@ export async function deleteEvent(eventId: string): Promise<void> {
   const { error } = await supabase.rpc('delete_event_coach', { p_event_id: eventId });
   if (error) throw error;
 }
+
+export async function setEventKit(input: { eventId: string; kitId: string }) {
+  const { data, error } = await supabase.rpc('set_event_kit_coach', {
+    p_event_id: input.eventId,
+    p_kit_id: input.kitId,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
