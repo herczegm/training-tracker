@@ -143,7 +143,7 @@ export async function getLineupById(lineupId: string): Promise<LineupRow> {
 export async function listLineupSlotsLabeled(lineupId: string): Promise<LabeledLineupSlotRow[]> {
   const { data, error } = await supabase
     .from('lineup_slots_labeled_v2')
-    .select('lineup_id,slot_key,label,user_id,position_id,slot_order')
+    .select('lineup_id,slot_key,label,user_id,position_id,slot_order,display_name')
     .eq('lineup_id', lineupId)
     .order('slot_order');
 
@@ -188,6 +188,41 @@ export async function listTeamDefaultLineups(teamId: string): Promise<LineupRow[
     .select('*')
     .eq('team_id', teamId)
     .is('event_id', null)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as LineupRow[];
+}
+
+export async function setLineupSlotGroup(input: {
+  lineupId: string;
+  slotKey: string;
+  groupKey: 'starter' | 'bench';
+}) {
+  const { data, error } = await supabase.rpc('set_lineup_slot_group', {
+    p_lineup_id: input.lineupId,
+    p_slot_key: input.slotKey,
+    p_group_key: input.groupKey,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function setLineupPublished(lineupId: string, published: boolean) {
+  const { data, error } = await supabase.rpc('set_lineup_published', {
+    p_lineup_id: lineupId,
+    p_published: published,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+export async function listEventPublishedLineups(eventId: string): Promise<LineupRow[]> {
+  const { data, error } = await supabase
+    .from('lineups')
+    .select('*')
+    .eq('event_id', eventId)
+    .not('locked_at', 'is', null)
     .order('created_at', { ascending: false });
 
   if (error) throw error;

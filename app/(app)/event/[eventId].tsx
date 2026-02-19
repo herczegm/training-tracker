@@ -12,18 +12,19 @@ import { listEventRoster, type EventRosterRow } from '@/src/db/eventRoster';
 import {
   clearLineupSlot,
   createLineupFromTemplate,
-  getLatestEventLineup,
+  duplicateLineup,
+  listEventLineups,
+  listEventPublishedLineups,
   listLineupSlotsLabeled,
+  listTeamDefaultLineups,
   listTemplates,
   setLineupLocked,
   setLineupSlot,
-  listTeamDefaultLineups,
-  duplicateLineup,
+  setLineupSlotGroup,
   type LabeledLineupSlotRow,
   type LineupRow,
-  type TemplateRow,
+  type TemplateRow
 } from '../../../src/db/lineups';
-import { type TeamPerson } from '../../../src/db/teamPeople';
 
 export default function EventDetail() {
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
@@ -43,51 +44,59 @@ export default function EventDetail() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   // Picker
-  const [people, setPeople] = useState<TeamPerson[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeSlotKey, setActiveSlotKey] = useState<string | null>(null);
   const [eventRoster, setEventRoster] = useState<EventRosterRow[]>([]);
   const [showDeclined, setShowDeclined] = useState(false);
 
+  const [eventLineups, setEventLineups] = useState<LineupRow[]>([]);
+  const [selectedLineupId, setSelectedLineupId] = useState<string | null>(null);
+
   const loadLineupBlock = async (ev: EventRow, teamRole: typeof role) => {
-    // csak coach/admin + match esetén
-    if (!(teamRole === 'coach' || teamRole === 'admin')) {
-      setLineup(null);
-      setLineupSlots([]);
-      setTemplates([]);
-      setSelectedTemplateId(null);
-      setPeople([]);
-      return;
-    }
+    if (!teamRole) return;
+
     if (ev.type !== 'match') {
       setLineup(null);
       setLineupSlots([]);
       setTemplates([]);
       setSelectedTemplateId(null);
-      setPeople([]);
+      setEventLineups([]);
+      setSelectedLineupId(null);
       return;
     }
 
-    const ppl = await listEventRoster(ev.id);
-    setEventRoster(ppl);
-    setPeople(
-      ppl.map((x) => ({
-        user_id: x.user_id,
-        display_name: x.display_name,
-        role: 'player' as const,
-      }))
-    );
+    const canCoach = (teamRole === 'admin' || teamRole === 'coach');
 
-    const l = await getLatestEventLineup(ev.id);
-    setLineup(l);
-
-    if (l) {
-      const slots = await listLineupSlotsLabeled(l.id);
-      setLineupSlots(slots);
+    if (canCoach) {
+      const ppl = await listEventRoster(ev.id);
+      setEventRoster(ppl);
     } else {
-      const tpls = await listTemplates('generic'); // később team.sport alapján
-      setTemplates(tpls);
-      setSelectedTemplateId(tpls[0]?.id ?? null);
+      setEventRoster([]);
+    }
+    
+    const list =  canCoach 
+      ? await listEventLineups(ev.id) 
+      : await listEventPublishedLineups(ev.id);
+
+    setEventLineups(list);
+
+    const current = list[0] ?? null;
+    setSelectedLineupId(current?.id ?? null);
+    setLineup(current);
+
+    if (current) {
+      setLineupSlots(await listLineupSlotsLabeled(current.id));
+    } else {
+      setLineupSlots([]);
+
+      if (canCoach) {
+        const tpls = await listTemplates('generic'); // később team.sport alapján
+        setTemplates(tpls);
+        setSelectedTemplateId(tpls[0]?.id ?? null);
+      } else {
+        setTemplates([]);
+        setSelectedTemplateId(null);
+      }
     }
   };
 
@@ -156,6 +165,9 @@ export default function EventDetail() {
       setLineup(l);
       const slots = await listLineupSlotsLabeled(l.id);
       setLineupSlots(slots);
+      const all = await listEventLineups(eventId);
+      setEventLineups(all);
+      setSelectedLineupId(l.id);
     } catch (e: any) {
       Alert.alert('Hiba', e?.message ?? 'Nem sikerült lineupot létrehozni');
     } finally {
@@ -199,15 +211,18 @@ export default function EventDetail() {
   };
 
   const toggleLock = async () => {
-    if (!lineup || !eventId) return;
+    if (!lineup) return;
     try {
       setLoading(true);
+
       await setLineupLocked(lineup.id, !lineup.locked_at);
-      const fresh = await getLatestEventLineup(eventId);
+
+      const all = await listEventLineups(eventId);
+      setEventLineups(all);
+      const fresh = all.find(x => x.id === lineup.id) ?? all[0] ?? null;
       setLineup(fresh);
-      if (fresh) {
-        setLineupSlots(await listLineupSlotsLabeled(fresh.id));
-      }
+      setSelectedLineupId(fresh?.id ?? null);
+      setLineupSlots(fresh ? await listLineupSlotsLabeled(fresh.id) : []);
     } catch (e: any) {
       Alert.alert('Hiba', e?.message ?? 'Nem sikerült lockolni');
     } finally {
@@ -247,11 +262,68 @@ export default function EventDetail() {
 
       setLineup(l);
       setLineupSlots(await listLineupSlotsLabeled(l.id));
+      const all = await listEventLineups(eventId);
+      setEventLineups(all);
+      setSelectedLineupId(l.id);
     } catch (e: any) {
       Alert.alert('Hiba', e?.message ?? 'Nem sikerült duplikálni');
     } finally {
       setLoading(false);
     }
+  };
+
+  const moveSlot = async (slotKey: string, groupKey: 'starter' | 'bench') => {
+    if (!lineup) return;
+    try {
+      setLoading(true);
+      await setLineupSlotGroup({ lineupId: lineup.id, slotKey, groupKey });
+      setLineupSlots(await listLineupSlotsLabeled(lineup.id));
+    } catch (e: any) {
+      Alert.alert('Hiba', e?.message ?? 'Nem sikerült mozgatni');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderSlot = (s: LabeledLineupSlotRow) => {
+    const name = s.user_id ? (s.display_name ?? s.user_id) : '—';
+    const num = s.user_id ? (s.jersey_number != null ? `#${s.jersey_number}` : '') : '';
+    const disabled = !!lineup?.locked_at;
+    const isBench = (s as any).group_key === 'bench';
+
+    return (
+      <View key={s.slot_key} style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 6 }}>
+        <Text style={{ fontWeight: '900' }}>{s.label}</Text>
+        <Text style={{ color: '#444' }}>Játékos: {num} {name}</Text>
+        {canCoach && (
+          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+            <Pressable
+              onPress={() => openPicker(s.slot_key)}
+              disabled={disabled}
+              style={{ padding: 10, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
+            >
+              <Text style={{ fontWeight: '700' }}>{disabled ? 'Zárolva' : 'Kiválaszt'}</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => moveSlot(s.slot_key, isBench ? 'starter' : 'bench')}
+              disabled={disabled}
+              style={{ padding: 10, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
+            >
+              <Text style={{ fontWeight: '700' }}>{isBench ? 'Kezdőbe' : 'Cserébe'}</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => clearSlot(s.slot_key)}
+              disabled={disabled}
+              style={{ padding: 10, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
+            >
+              <Text style={{ fontWeight: '700' }}>Clear</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    );
   };
 
   if (loading && !event) {
@@ -270,7 +342,12 @@ export default function EventDetail() {
     );
   }
 
-  const showLineup = (role === 'admin' || role === 'coach') && event.type === 'match';
+  const isMatch = event.type === 'match';
+  const canCoach = (role === 'admin' || role === 'coach');
+  const canSeeLineup = isMatch && !!role;
+
+  const starters = lineupSlots.filter((s) => (s as any).group_key !== 'bench');
+  const bench = lineupSlots.filter((s) => (s as any).group_key === 'bench');
 
   return (
     <View style={{ flex: 1, padding: 20, gap: 12 }}>
@@ -304,69 +381,101 @@ export default function EventDetail() {
       )}
 
       {/* LINEUP */}
-      {showLineup && (
+      {canSeeLineup && (
         <View style={{ marginTop: 14, padding: 12, borderWidth: 1, borderRadius: 12, gap: 10 }}>
           <Text style={{ fontSize: 18, fontWeight: '900' }}>Lineup</Text>
 
-          {!lineup ? (
-            <>
-              {templates.length === 0 ? (
-                <Text style={{ color: '#666' }}>
-                  Nincs lineup template. Hozz létre egyet a DB-ben (lineup_templates + lineup_template_slots).
-                </Text>
-              ) : (
-                <>
-                  <Text style={{ color: '#666' }}>
-                    Template: {templates.find((t) => t.id === selectedTemplateId)?.name}
+          {eventLineups.length > 1 && (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {eventLineups.map((l, idx) => (
+                <Pressable
+                  key={l.id}
+                  onPress={async () => {
+                    setSelectedLineupId(l.id);
+                    setLineup(l);
+                    setLineupSlots(await listLineupSlotsLabeled(l.id));
+                  }}
+                  style={{
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                    borderWidth: 1,
+                    borderRadius: 999,
+                    backgroundColor: selectedLineupId === l.id ? '#000' : 'transparent',
+                  }}
+                >
+                  <Text style={{ color: selectedLineupId === l.id ? '#fff' : '#000', fontWeight: '800' }}>
+                    {idx === 0 ? 'Latest' : `#${eventLineups.length - idx}`}
                   </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
-                  <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                    {templates.map((t) => (
-                      <Pressable
-                        key={t.id}
-                        onPress={() => setSelectedTemplateId(t.id)}
-                        style={{
-                          padding: 10,
-                          borderWidth: 1,
-                          borderRadius: 10,
-                          backgroundColor: selectedTemplateId === t.id ? '#000' : 'transparent',
-                        }}
-                      >
-                        <Text style={{ color: selectedTemplateId === t.id ? '#fff' : '#000', fontWeight: '700' }}>
-                          {t.name}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
+          {!lineup ? (
+            canCoach ? (
+              <>
+                <Pressable
+                  onPress={createFromDefault}
+                  disabled={loading}
+                  style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '800' }}>Default lineup átmásolása</Text>
+                </Pressable>
 
-                  <Pressable
-                    onPress={createLineup}
-                    disabled={loading || !selectedTemplateId}
-                    style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '800' }}>Lineup létrehozása</Text>
-                  </Pressable>
+                {templates.length === 0 ? (
+                  <Text style={{ color: '#666' }}>
+                    Nincs lineup template. Hozz létre egyet a DB-ben (lineup_templates + lineup_template_slots).
+                  </Text>
+                ) : (
+                  <>
+                    <Text style={{ color: '#666' }}>
+                      Template: {templates.find((t) => t.id === selectedTemplateId)?.name}
+                    </Text>
 
-                  <Pressable
-                    onPress={createFromDefault}
-                    disabled={loading}
-                    style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '800' }}>Default lineup átmásolása</Text>
-                  </Pressable>
-                </>
-              )}
-            </>
+                    <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                      {templates.map((t) => (
+                        <Pressable
+                          key={t.id}
+                          onPress={() => setSelectedTemplateId(t.id)}
+                          style={{
+                            padding: 10,
+                            borderWidth: 1,
+                            borderRadius: 10,
+                            backgroundColor: selectedTemplateId === t.id ? '#000' : 'transparent',
+                          }}
+                        >
+                          <Text style={{ color: selectedTemplateId === t.id ? '#fff' : '#000', fontWeight: '700' }}>
+                            {t.name}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+
+                    <Pressable
+                      onPress={createLineup}
+                      disabled={loading || !selectedTemplateId}
+                      style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '800' }}>Lineup létrehozása</Text>
+                    </Pressable>
+                  </>
+                )}
+              </>
+            ) : (
+              <Text style={{ color: '#666' }}>Még nincs publikált lineup.</Text>
+            )
           ) : (
             <>
-              <Pressable
-                onPress={() => setShowDeclined((v) => !v)}
-                style={{ padding: 10, borderWidth: 1, borderRadius: 12, alignItems: 'center', marginBottom: 10 }}
-              >
-                <Text style={{ fontWeight: '800' }}>
-                  {showDeclined ? 'NO-k elrejtése' : 'NO-k megjelenítése'}
-                </Text>
-              </Pressable>
+              {canCoach && (
+                <Pressable
+                  onPress={() => setShowDeclined((v) => !v)}
+                  style={{ padding: 10, borderWidth: 1, borderRadius: 12, alignItems: 'center', marginBottom: 10 }}
+                >
+                  <Text style={{ fontWeight: '800' }}>
+                    {showDeclined ? 'NO-k elrejtése' : 'NO-k megjelenítése'}
+                  </Text>
+                </Pressable>
+              )}
               <Pressable
                 onPress={toggleLock}
                 disabled={loading}
@@ -379,77 +488,54 @@ export default function EventDetail() {
                 <Text style={{ color: '#666' }}>Nincsenek slotok (template slots hiányozhat).</Text>
               ) : (
                 <View style={{ gap: 8 }}>
-                  {lineupSlots.map((s) => {
-                    const name = s.user_id ? (s.display_name ?? s.user_id) : '—';
-                    const num = s.user_id ? (s.jersey_number != null ? `#${s.jersey_number}` : '') : '';
-                    const disabled = !!lineup.locked_at;
+                  <Text style={{ fontWeight: '900' }}>Kezdő</Text>
+                  {starters.map(renderSlot)}
 
-                    return (
-                      <View key={s.slot_key} style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 6 }}>
-                        <Text style={{ fontWeight: '900' }}>{s.label}</Text>
-                        <Text style={{ color: '#444' }}>Játékos: {num} {name}</Text>
-
-                        <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                          <Pressable
-                            onPress={() => openPicker(s.slot_key)}
-                            disabled={disabled}
-                            style={{ padding: 10, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
-                          >
-                            <Text style={{ fontWeight: '700' }}>{disabled ? 'Zárolva' : 'Kiválaszt'}</Text>
-                          </Pressable>
-
-                          <Pressable
-                            onPress={() => clearSlot(s.slot_key)}
-                            disabled={disabled}
-                            style={{ padding: 10, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
-                          >
-                            <Text style={{ fontWeight: '700' }}>Clear</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    );
-                  })}
+                  <Text style={{ fontWeight: '900', marginTop: 10 }}>Csere</Text>
+                  {bench.map(renderSlot)}
                 </View>
               )}
             </>
           )}
 
-          <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
-            <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  padding: 16,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  maxHeight: '70%',
-                }}
-              >
-                <Text style={{ fontSize: 18, fontWeight: '900', marginBottom: 10 }}>Válassz játékost</Text>
-
-                <FlatList
-                  data={filteredPeople}
-                  keyExtractor={(p) => p.user_id}
-                  renderItem={({ item }) => (
-                    <Pressable
-                      onPress={() => choosePlayer(item.user_id)}
-                      style={{ padding: 12, borderWidth: 1, borderRadius: 12, marginBottom: 8 }}
-                    >
-                      <Text style={{ fontWeight: '800' }}>{item.display_name ?? item.user_id}</Text>
-                      <Text style={{ color: '#666' }}>{item.role}</Text>
-                    </Pressable>
-                  )}
-                />
-
-                <Pressable
-                  onPress={() => setPickerOpen(false)}
-                  style={{ padding: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center', marginTop: 6 }}
+          {canCoach && (
+            <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+              <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+                <View
+                  style={{
+                    backgroundColor: '#fff',
+                    padding: 16,
+                    borderTopLeftRadius: 16,
+                    borderTopRightRadius: 16,
+                    maxHeight: '70%',
+                  }}
                 >
-                  <Text style={{ fontWeight: '800' }}>Bezár</Text>
-                </Pressable>
+                  <Text style={{ fontSize: 18, fontWeight: '900', marginBottom: 10 }}>Válassz játékost</Text>
+
+                  <FlatList
+                    data={filteredPeople}
+                    keyExtractor={(p) => p.user_id}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => choosePlayer(item.user_id)}
+                        style={{ padding: 12, borderWidth: 1, borderRadius: 12, marginBottom: 8 }}
+                      >
+                        <Text style={{ fontWeight: '800' }}>{item.display_name ?? item.user_id}</Text>
+                        <Text style={{ color: '#666' }}>{item.role}</Text>
+                      </Pressable>
+                    )}
+                  />
+
+                  <Pressable
+                    onPress={() => setPickerOpen(false)}
+                    style={{ padding: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center', marginTop: 6 }}
+                  >
+                    <Text style={{ fontWeight: '800' }}>Bezár</Text>
+                  </Pressable>
+                </View>
               </View>
-            </View>
-          </Modal>
+            </Modal>
+          )}
         </View>
       )}
 
