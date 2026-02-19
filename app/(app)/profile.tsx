@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { Alert, TextInput, View } from 'react-native';
+
 import { getMyProfile, updateMyDisplayName } from '../../src/db/profile';
 import { supabase } from '../../src/lib/supabase';
+
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { LoadingView } from '@/src/ui/LoadingView';
+import { H1, H3, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
 
 export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
@@ -45,38 +54,55 @@ export default function ProfileScreen() {
     await supabase.auth.signOut();
   };
 
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    backgroundColor: theme.color.surface,
+    color: theme.color.text,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.md,
+    fontWeight: '700' as const,
+  };
+
+  if (loading) {
+    return (
+      <Screen>
+        <LoadingView label="Profil betöltése..." />
+      </Screen>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 24, fontWeight: '800' }}>Profil</Text>
+    <Screen scroll>
+      <View style={{ gap: theme.space.lg }}>
+        <View style={{ gap: 6 }}>
+          <H1>Profil</H1>
+          <Muted>Itt tudod beállítani a megjelenített nevedet.</Muted>
+        </View>
 
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <>
-          <Text style={{ fontWeight: '700' }}>Megjelenített név</Text>
-          <TextInput
-            value={displayName}
-            onChangeText={setDisplayName}
-            placeholder="Pl. Kovács Bence"
-            style={{ borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 10 }}
-          />
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ gap: theme.space.sm }}>
+              <H3>Megjelenített név</H3>
+              <TextInput
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Pl. Kovács Bence"
+                placeholderTextColor={theme.color.subtle}
+                autoCapitalize="words"
+                autoCorrect={false}
+                style={inputStyle}
+              />
+              <Small>Legalább 2 karakter.</Small>
+            </View>
 
-          <Pressable
-            onPress={save}
-            disabled={saving}
-            style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '700' }}>{saving ? 'Mentés…' : 'Mentés'}</Text>
-          </Pressable>
+            <Button title={saving ? 'Mentés…' : 'Mentés'} onPress={save} disabled={saving} />
 
-          <Pressable
-            onPress={signOut}
-            style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
-          >
-            <Text style={{ fontWeight: '700' }}>Logout</Text>
-          </Pressable>
-        </>
-      )}
-    </View>
+            <Button title="Kijelentkezés" variant="secondary" onPress={signOut} disabled={saving} />
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

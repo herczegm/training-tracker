@@ -1,7 +1,16 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator } from 'react-native';
-import { redeemInvite } from '../../src/db/invites';
+import { Alert, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
+
+import { redeemInvite } from '../../src/db/invites';
+
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { LoadingView } from '@/src/ui/LoadingView';
+import { H1, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
 
 export default function JoinTeamScreen() {
   const [code, setCode] = useState('');
@@ -24,25 +33,53 @@ export default function JoinTeamScreen() {
     }
   };
 
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    backgroundColor: theme.color.surface,
+    color: theme.color.text,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.md,
+    fontWeight: '800' as const,
+    letterSpacing: 1.2,
+  };
+
   return (
-    <View style={{ flex: 1, padding: 20, gap: 12, justifyContent: 'center' }}>
-      <Text style={{ fontSize: 24, fontWeight: '800' }}>Csatlakozás kóddal</Text>
+    <Screen scroll>
+      <View style={{ flex: 1, justifyContent: 'center', gap: theme.space.lg }}>
+        <View style={{ gap: 8 }}>
+          <H1>Csatlakozás kóddal</H1>
+          <Muted>Add meg az invite kódot (pl. a coach küldte).</Muted>
+        </View>
 
-      <TextInput
-        value={code}
-        onChangeText={setCode}
-        placeholder="Pl.: 8H7K3QWZ"
-        autoCapitalize="characters"
-        style={{ borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 10 }}
-      />
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ gap: theme.space.sm }}>
+              <Small>Invite kód</Small>
+              <TextInput
+                value={code}
+                onChangeText={setCode}
+                placeholder="Pl.: 8H7K3QWZ"
+                placeholderTextColor={theme.color.subtle}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                textContentType="oneTimeCode"
+                style={inputStyle}
+              />
+              <Small>Tipp: a kód nem case-sensitive, de automatikusan nagybetűsítjük.</Small>
+            </View>
 
-      <Pressable
-        onPress={join}
-        disabled={loading}
-        style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-      >
-        {loading ? <ActivityIndicator /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Csatlakozom</Text>}
-      </Pressable>
-    </View>
+            <Button
+              title={loading ? 'Csatlakozás…' : 'Csatlakozom'}
+              onPress={join}
+              disabled={loading || code.trim().length === 0}
+            />
+
+            {loading && <LoadingView label="Csatlakozás folyamatban..." />}
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

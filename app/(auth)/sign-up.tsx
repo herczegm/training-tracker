@@ -1,7 +1,14 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { Alert, TextInput, View } from 'react-native';
 import { supabase } from '../../src/lib/supabase';
+
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { H1, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
 
 export default function SignUp() {
   const [email, setEmail] = useState('');
@@ -34,39 +41,74 @@ export default function SignUp() {
   };
 
   return (
-    <View style={{ flex: 1, padding: 20, justifyContent: 'center', gap: 12 }}>
-      <Text style={{ fontSize: 26, fontWeight: '700' }}>Regisztráció</Text>
+    <Screen scroll>
+      <View style={{ flex: 1, justifyContent: 'center', gap: theme.space.lg }}>
+        <View style={{ gap: 6 }}>
+          <H1>Regisztráció</H1>
+          <Muted>Hozz létre fiókot és csatlakozz a csapatodhoz.</Muted>
+        </View>
 
-      <TextInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        style={{ borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 10 }}
-      />
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ gap: 8 }}>
+              <Small>Email</Small>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email"
+                placeholderTextColor={theme.color.subtle}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.color.border,
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  color: theme.color.text,
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  borderRadius: theme.radius.md,
+                  fontWeight: '700',
+                }}
+              />
+            </View>
 
-      <TextInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Jelszó (min. 8 karakter)"
-        secureTextEntry
-        style={{ borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 10 }}
-      />
+            <View style={{ gap: 8 }}>
+              <Small>Jelszó</Small>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Min. 8 karakter"
+                placeholderTextColor={theme.color.subtle}
+                secureTextEntry
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.color.border,
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  color: theme.color.text,
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  borderRadius: theme.radius.md,
+                  fontWeight: '700',
+                }}
+              />
+              <Muted>
+                Tipp: használj legalább 8 karaktert, számot és egy speciális jelet.
+              </Muted>
+            </View>
 
-      <Pressable
-        onPress={signUp}
-        disabled={loading}
-        style={{ backgroundColor: loading ? '#999' : '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>
-          {loading ? 'Létrehozom…' : 'Fiók létrehozása'}
-        </Text>
-      </Pressable>
+            <Button
+              title={loading ? 'Létrehozom…' : 'Fiók létrehozása'}
+              onPress={signUp}
+              disabled={loading}
+              variant="primary"
+            />
 
-      <Link href="/(auth)/sign-in" style={{ color: '#444' }}>
-        Van már fiókod? Belépés →
-      </Link>
-    </View>
+            <Link href="/(auth)/sign-in" asChild>
+              <Button title="Van már fiókod? Belépés →" onPress={() => {}} variant="ghost" />
+            </Link>
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

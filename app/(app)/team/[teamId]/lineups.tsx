@@ -1,14 +1,25 @@
 import { Link, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { Alert, View } from 'react-native';
+
 import {
-    createLineupFromTemplate,
-    listTeamLineups,
-    listTemplates,
-    type LineupRow,
-    type TemplateRow,
+  createLineupFromTemplate,
+  listTeamLineups,
+  listTemplates,
+  type LineupRow,
+  type TemplateRow,
 } from '../../../../src/db/lineups';
 import { getMyRole } from '../../../../src/db/roles';
+
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { ListItem } from '@/src/ui/ListItem';
+import { EmptyState } from '@/src/ui/EmptyState';
+import { LoadingView } from '@/src/ui/LoadingView';
+import { H1, H2, H3, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
 
 export default function TeamLineupsScreen() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
@@ -19,6 +30,8 @@ export default function TeamLineupsScreen() {
   const [items, setItems] = useState<LineupRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  const canCoach = role === 'admin' || role === 'coach';
 
   const load = async () => {
     if (!teamId) return;
@@ -31,7 +44,6 @@ export default function TeamLineupsScreen() {
       const rows = await listTeamLineups(teamId);
       setItems(rows);
 
-      // templatek csak coach/adminnak kellenek (create-hoz)
       if (r === 'admin' || r === 'coach') {
         const tpls = await listTemplates('generic'); // később team.sport alapján
         setTemplates(tpls);
@@ -55,12 +67,14 @@ export default function TeamLineupsScreen() {
     if (!teamId || !selectedTemplateId) return;
     try {
       setLoading(true);
+
       await createLineupFromTemplate({
         teamId,
         templateId: selectedTemplateId,
-        eventId: null, // team-level lineup
+        eventId: null,
         formation: null,
       });
+
       await load();
       Alert.alert('Kész', 'Lineup létrejött.');
     } catch (e: any) {
@@ -70,76 +84,117 @@ export default function TeamLineupsScreen() {
     }
   };
 
+  if (loading && items.length === 0) {
+    return (
+      <Screen>
+        <LoadingView label="Lineupok betöltése..." />
+      </Screen>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 24, fontWeight: '800' }}>Lineupok</Text>
+    <Screen scroll>
+      <View style={{ gap: theme.space.lg }}>
+        {/* Header */}
+        <View style={{ gap: 6 }}>
+          <H1>Lineupok</H1>
+          <Muted>Team szintű összeállítások. (Event lineupok külön az eseménynél.)</Muted>
+        </View>
 
-      {(role === 'admin' || role === 'coach') && (
-        <View style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 10 }}>
-          <Text style={{ fontWeight: '900' }}>Új lineup (team)</Text>
-
-          {templates.length === 0 ? (
-            <Text style={{ color: '#666' }}>Nincs template (lineup_templates).</Text>
-          ) : (
-            <>
-              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                {templates.map((t) => (
-                  <Pressable
-                    key={t.id}
-                    onPress={() => setSelectedTemplateId(t.id)}
-                    style={{
-                      padding: 10,
-                      borderWidth: 1,
-                      borderRadius: 10,
-                      backgroundColor: selectedTemplateId === t.id ? '#000' : 'transparent',
-                    }}
-                  >
-                    <Text style={{ color: selectedTemplateId === t.id ? '#fff' : '#000', fontWeight: '700' }}>
-                      {t.name}
-                    </Text>
-                  </Pressable>
-                ))}
+        {/* Create block */}
+        {canCoach && (
+          <Card>
+            <View style={{ gap: theme.space.md }}>
+              <View style={{ gap: 4 }}>
+                <H2>Új team lineup</H2>
+                <Small>Template alapján létrehozás</Small>
               </View>
 
-              <Pressable
-                onPress={create}
-                disabled={loading || !selectedTemplateId}
-                style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '800' }}>Lineup létrehozása</Text>
-              </Pressable>
-            </>
-          )}
+              {templates.length === 0 ? (
+                <EmptyState
+                  title="Nincs template"
+                  description="Hozz létre egy lineup template-et (lineup_templates + lineup_template_slots)."
+                  // actionLabel="Frissítés"
+                  // onAction={load}
+                />
+              ) : (
+                <>
+                  {/* Template chips */}
+                  <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                    {templates.map((t) => {
+                      const active = selectedTemplateId === t.id;
+                      return (
+                        <Button
+                          key={t.id}
+                          title={t.name}
+                          onPress={() => setSelectedTemplateId(t.id)}
+                          variant={active ? 'primary' : 'secondary'}
+                          disabled={loading}
+                        />
+                      );
+                    })}
+                  </View>
 
-          <Pressable onPress={load} disabled={loading} style={{ padding: 10, alignItems: 'center' }}>
-            <Text style={{ fontWeight: '700' }}>Frissítés</Text>
-          </Pressable>
-        </View>
-      )}
+                  <Button
+                    title={loading ? 'Létrehozás…' : 'Lineup létrehozása'}
+                    onPress={create}
+                    disabled={loading || !selectedTemplateId}
+                    variant="primary"
+                  />
+                </>
+              )}
 
-      {loading ? (
-        <ActivityIndicator />
-      ) : items.length === 0 ? (
-        <Text style={{ color: '#666' }}>Még nincs lineup.</Text>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {items.map((l) => (
-            <Link
-              key={l.id}
-              href={{ pathname: '/(app)/team/[teamId]/lineup/[lineupId]', params: { teamId, lineupId: l.id } }}
-              asChild
-            >
-              <Pressable style={{ padding: 14, borderWidth: 1, borderRadius: 12 }}>
-                <Text style={{ fontSize: 18, fontWeight: '900' }}>
-                  {l.event_id ? 'Meccs lineup' : 'Team lineup'}
-                </Text>
-                <Text style={{ color: '#666' }}>{new Date(l.created_at).toLocaleString()}</Text>
-                {!!l.locked_at && <Text style={{ color: '#b00', fontWeight: '800' }}>LOCKED</Text>}
-              </Pressable>
-            </Link>
-          ))}
-        </View>
-      )}
-    </View>
+              <Button
+                title={loading ? 'Frissítés…' : 'Frissítés'}
+                onPress={load}
+                disabled={loading}
+                variant="ghost"
+              />
+            </View>
+          </Card>
+        )}
+
+        {/* List */}
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <H2>Lista</H2>
+              <Small>{items.length} db</Small>
+            </View>
+
+            {loading ? (
+              <LoadingView label="Frissítés..." />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title="Még nincs lineup"
+                description={canCoach ? 'Hozz létre egyet fent template-ből.' : 'Coach/Admin tud létrehozni.'}
+              />
+            ) : (
+              <View style={{ gap: 10 }}>
+                {items.map((l) => {
+                  const title = l.event_id ? 'Meccs lineup' : 'Team lineup';
+                  const subtitle = `Létrehozva: ${new Date(l.created_at).toLocaleString()}`;
+
+                  return (
+                    <Link
+                      key={l.id}
+                      href={{ pathname: '/(app)/team/[teamId]/lineup/[lineupId]', params: { teamId, lineupId: l.id } }}
+                      asChild
+                    >
+                      <ListItem
+                        title={title}
+                        subtitle={subtitle}
+                        chevron
+                        rightBadge={l.locked_at ? 'LOCKED' : undefined}
+                      />
+                    </Link>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

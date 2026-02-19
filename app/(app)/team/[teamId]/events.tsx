@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react';
-import { View, Text, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, View } from 'react-native';
 import { Link, useLocalSearchParams } from 'expo-router';
+
 import { listTeamEvents, createEvent } from '../../../../src/db/events';
 import type { EventRow } from '../../../../src/db/types';
 
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { ListItem } from '@/src/ui/ListItem';
+import { EmptyState } from '@/src/ui/EmptyState';
+import { LoadingView } from '@/src/ui/LoadingView';
+import { H1, H2, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
+
 export default function EventsScreen() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
+
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,8 +42,10 @@ export default function EventsScreen() {
     if (!teamId) return;
     try {
       setLoading(true);
+
       const starts = new Date(Date.now() + 24 * 3600 * 1000);
       const ends = new Date(starts.getTime() + 90 * 60 * 1000);
+
       await createEvent({
         teamId,
         type: 'training',
@@ -41,6 +55,7 @@ export default function EventsScreen() {
         location: 'Pálya 1',
         notes: 'Gyorsan felvitt edzés (dev)',
       });
+
       await load();
     } catch (err: any) {
       Alert.alert('Hiba', err?.message ?? 'Nem sikerült létrehozni');
@@ -49,39 +64,102 @@ export default function EventsScreen() {
     }
   };
 
+  const sorted = useMemo(() => {
+    // ha a listTeamEvents már rendez, ez akkor is oké
+    return [...events].sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at));
+  }, [events]);
+
+  if (loading && events.length === 0) {
+    return (
+      <Screen>
+        <LoadingView label="Események betöltése..." />
+      </Screen>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 24, fontWeight: '700' }}>Események</Text>
-
-      <Pressable
-        onPress={quickCreateTraining}
-        disabled={loading}
-        style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>DEV: Edzés létrehozása holnapra</Text>
-      </Pressable>
-
-      <Pressable onPress={load} disabled={loading} style={{ padding: 10, alignItems: 'center' }}>
-        <Text style={{ fontWeight: '600' }}>Frissítés</Text>
-      </Pressable>
-
-      {loading ? (
-        <ActivityIndicator />
-      ) : events.length === 0 ? (
-        <Text style={{ color: '#666' }}>Nincs még esemény. Hozz létre egyet.</Text>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {events.map((e) => (
-            <Link key={e.id} href={{ pathname: '/(app)/event/[eventId]', params: { eventId: e.id } }} asChild>
-              <Pressable style={{ padding: 14, borderWidth: 1, borderRadius: 12, gap: 4 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800' }}>{e.title ?? e.type}</Text>
-                <Text style={{ color: '#666' }}>{new Date(e.starts_at).toLocaleString()}</Text>
-                {!!e.location && <Text style={{ color: '#666' }}>{e.location}</Text>}
-              </Pressable>
-            </Link>
-          ))}
+    <Screen scroll>
+      <View style={{ gap: theme.space.lg }}>
+        {/* Header */}
+        <View style={{ gap: 6 }}>
+          <H1>Események</H1>
+          <Muted>Következő edzések, meccsek és csapat események</Muted>
         </View>
-      )}
-    </View>
+
+        {/* Actions */}
+        <Card>
+          <View style={{ gap: theme.space.sm }}>
+            <H2>Műveletek</H2>
+
+            <Button
+              title={loading ? 'Frissítés…' : 'Frissítés'}
+              onPress={load}
+              disabled={loading}
+              variant="secondary"
+            />
+
+            {/* DEV gomb külön kártyában, hogy ne keveredjen éles UI-val */}
+            <View style={{ marginTop: theme.space.sm }}>
+              <Small>Fejlesztői eszköz</Small>
+              <Button
+                title={loading ? 'Létrehozás…' : 'DEV: Edzés létrehozása holnapra'}
+                onPress={quickCreateTraining}
+                disabled={loading}
+                variant="ghost"
+              />
+            </View>
+          </View>
+        </Card>
+
+        {/* List */}
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <H2>Lista</H2>
+              <Small>{sorted.length} db</Small>
+            </View>
+
+            {loading ? (
+              <LoadingView label="Frissítés..." />
+            ) : sorted.length === 0 ? (
+              <EmptyState
+                title="Nincs még esemény"
+                description="Hozz létre egy edzést vagy meccset, és itt fog megjelenni."
+              />
+            ) : (
+              <View style={{ gap: 8 }}>
+                {sorted.map((e) => {
+                  const title = e.title ?? e.type;
+                  const when = new Date(e.starts_at).toLocaleString();
+                  const subtitle = e.location ? `${when} • ${e.location}` : when;
+
+                  return (
+                    <Link
+                      key={e.id}
+                      href={{ pathname: '/(app)/event/[eventId]', params: { eventId: e.id } }}
+                      asChild
+                    >
+                      <ListItem
+                        title={title}
+                        subtitle={subtitle}
+                        chevron
+                        // opcionális: badge ha van ilyen propod a ListItem-ben
+                        // badge={e.type === 'match' ? 'MECCS' : e.type === 'training' ? 'EDZÉS' : undefined}
+                      />
+                    </Link>
+                  );
+                })}
+              </View>
+            )}
+
+            {!loading && sorted.length > 0 && (
+              <Muted>
+                Tipp: nyisd meg az eseményt, és ott RSVP + (meccsnél) lineup is elérhető.
+              </Muted>
+            )}
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

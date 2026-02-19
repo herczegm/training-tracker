@@ -1,13 +1,24 @@
-import { Link, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, Alert, ActivityIndicator } from 'react-native';
+import { Alert, View } from 'react-native';
 import { supabase } from '../../../src/lib/supabase';
 import { createInvite } from '../../../src/db/invites';
 import type { Team } from '../../../src/db/types';
 import { getMyRole } from '@/src/db/roles';
 
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { ListItem } from '@/src/ui/ListItem';
+import { EmptyState } from '@/src/ui/EmptyState';
+import { LoadingView } from '@/src/ui/LoadingView';
+import { H1, H2, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
+
 export default function TeamHome() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
+  const router = useRouter();
 
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,6 +27,7 @@ export default function TeamHome() {
   const [lastCode, setLastCode] = useState<string | null>(null);
 
   const [role, setRole] = useState<'admin' | 'coach' | 'player' | null>(null);
+  const canCoach = role === 'admin' || role === 'coach';
 
   const load = async () => {
     if (!teamId) return;
@@ -23,6 +35,7 @@ export default function TeamHome() {
       setLoading(true);
       const { data, error } = await supabase.from('teams').select('*').eq('id', teamId).single();
       if (error) throw error;
+
       setTeam(data as Team);
       setRole((await getMyRole(teamId)) ?? null);
     } catch (e: any) {
@@ -50,70 +63,133 @@ export default function TeamHome() {
     }
   };
 
+  if (loading && !team) {
+    return (
+      <Screen>
+        <LoadingView label="Csapat betöltése..." />
+      </Screen>
+    );
+  }
+
+  if (!team) {
+    return (
+      <Screen scroll>
+        <EmptyState
+          title="Nem találom a csapatot"
+          description="Lehet, hogy törölve lett, vagy nincs jogosultságod hozzá."
+        />
+      </Screen>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, padding: 20, gap: 12 }}>
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <Text style={{ fontSize: 24, fontWeight: '700' }}>{team?.name ?? 'Csapat'}</Text>
-      )}
+    <Screen scroll>
+      <View style={{ gap: theme.space.lg }}>
+        {/* HEADER */}
+        <View style={{ gap: 6 }}>
+          <H1>{team.name ?? 'Csapat'}</H1>
+          <Muted>
+            Szerepkör: <Small>{role ?? '—'}</Small>
+          </Muted>
 
-      {role !== 'player' && (
-        <Link href={{ pathname: '/(app)/team/[teamId]/invites', params: { teamId } }} asChild>
-          <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}>
-            <Text style={{ fontWeight: '700' }}>Invite kezelő</Text>
-          </Pressable>
-        </Link>
-      )}
-      
-      {role !== 'player' && (
-        <Pressable
-          onPress={genInvite}
-          disabled={inviteLoading}
-          style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>
-            {inviteLoading ? 'Készül…' : 'Invite kód generálás (játékos)'}
-          </Text>
-        </Pressable>
-      )}
+          {!!lastCode && (
+            <Card>
+              <View style={{ gap: 6 }}>
+                <H2>Legutóbbi invite</H2>
+                <Muted>Másold ki és küldd el a játékosnak:</Muted>
+                <View style={{ paddingTop: 4 }}>
+                  <H1>{lastCode}</H1>
+                </View>
+              </View>
+            </Card>
+          )}
+        </View>
 
-      {!!lastCode && (
-        <Text style={{ fontSize: 18, fontWeight: '800' }}>
-          Legutóbbi kód: {lastCode}
-        </Text>
-      )}
+        {/* COACH TOOLS */}
+        {canCoach && (
+          <Card>
+            <View style={{ gap: theme.space.md }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <H2>Coach / Admin</H2>
+                <Small>{inviteLoading ? 'dolgozom…' : 'eszközök'}</Small>
+              </View>
 
-      <Link href="/(app)/join" asChild>
-        <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700' }}>Csatlakozás kóddal</Text>
-        </Pressable>
-      </Link>
+              <Button
+                title={inviteLoading ? 'Készül…' : 'Invite kód generálás (játékos)'}
+                onPress={genInvite}
+                disabled={inviteLoading}
+                variant="primary"
+              />
 
-      <Link href={{ pathname: '/(app)/team/[teamId]/events', params: { teamId } }} asChild>
-        <Pressable style={{ padding: 14, borderWidth: 1, borderRadius: 12 }}>
-          <Text style={{ fontSize: 16, fontWeight: '600' }}>Események</Text>
-        </Pressable>
-      </Link>
+              <ListItem
+                title="Invite kezelő"
+                subtitle="Kódok listája, letiltás/engedélyezés"
+                leftIcon="🎟️"
+                onPress={() =>
+                  router.push({ pathname: '/(app)/team/[teamId]/invites', params: { teamId } })
+                }
+              />
+            </View>
+          </Card>
+        )}
 
-      <Link href={{ pathname: '/(app)/team/[teamId]/members', params: { teamId } }} asChild>
-        <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700' }}>Csapattagok</Text>
-        </Pressable>
-      </Link>
+        {/* MAIN NAV */}
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <H2>Menü</H2>
 
-      <Link href={{ pathname: '/(app)/team/[teamId]/lineups', params: { teamId } }} asChild>
-        <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700' }}>Lineupok</Text>
-        </Pressable>
-      </Link>
+            <ListItem
+              title="Események"
+              subtitle="Edzések, meccsek, részletek"
+              leftIcon="📅"
+              onPress={() =>
+                router.push({ pathname: '/(app)/team/[teamId]/events', params: { teamId } })
+              }
+            />
 
-      <Link href={{ pathname: '/(app)/team/[teamId]/roster', params: { teamId } }} asChild>
-        <Pressable style={{ padding: 12, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700' }}>Roster</Text>
-        </Pressable>
-      </Link>
+            <ListItem
+              title="Csapattagok"
+              subtitle="Tagok és szerepkörök"
+              leftIcon="👥"
+              onPress={() =>
+                router.push({ pathname: '/(app)/team/[teamId]/members', params: { teamId } })
+              }
+            />
 
-    </View>
+            <ListItem
+              title="Lineupok"
+              subtitle="Team lineupok, sablonokból"
+              leftIcon="🧩"
+              onPress={() =>
+                router.push({ pathname: '/(app)/team/[teamId]/lineups', params: { teamId } })
+              }
+            />
+
+            <ListItem
+              title="Roster"
+              subtitle="Mezszámok, posztok, aktív státusz"
+              leftIcon="📋"
+              onPress={() =>
+                router.push({ pathname: '/(app)/team/[teamId]/roster', params: { teamId } })
+              }
+            />
+          </View>
+        </Card>
+
+        {/* JOIN */}
+        <Card>
+          <View style={{ gap: theme.space.sm }}>
+            <H2>Csatlakozás</H2>
+            <Muted>Ha másik csapathoz csatlakoznál invite kóddal.</Muted>
+
+            <Button
+              title="Csatlakozás kóddal"
+              variant="secondary"
+              onPress={() => router.push('/(app)/join')}
+            />
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

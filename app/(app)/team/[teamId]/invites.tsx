@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { Alert, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+
 import { createInvite, listInvites, setInviteDisabled, type InviteRow } from '../../../../src/db/invites';
+
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { ListItem } from '@/src/ui/ListItem';
+import { EmptyState } from '@/src/ui/EmptyState';
+import { LoadingView } from '@/src/ui/LoadingView';
+import { H1, H2, H3, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
 
 export default function InvitesScreen() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
@@ -40,12 +51,14 @@ export default function InvitesScreen() {
     if (!teamId) return;
     try {
       setLoading(true);
+
       const inv = await createInvite({
         teamId,
         role,
         maxUses: Math.max(0, Number(maxUses) || 0),
         expiresAt,
       });
+
       Alert.alert('Új kód', inv.code);
       await load();
     } catch (e: any) {
@@ -67,98 +80,181 @@ export default function InvitesScreen() {
     }
   };
 
+  const chipStyle = (active: boolean) => ({
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: theme.radius.pill,
+    borderColor: theme.color.border,
+    backgroundColor: active ? theme.color.primary : 'transparent',
+  });
+
+  const chipTextStyle = (active: boolean) => ({
+    fontWeight: '900' as const,
+    color: active ? theme.color.primaryText : theme.color.text,
+  });
+
+  if (loading && items.length === 0) {
+    return (
+      <Screen>
+        <LoadingView label="Invite-ok betöltése..." />
+      </Screen>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, padding: 20, gap: 12 }}>
-      <Text style={{ fontSize: 24, fontWeight: '800' }}>Invite kódok</Text>
-
-      <View style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 8 }}>
-        <Text style={{ fontWeight: '800' }}>Új invite</Text>
-
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable
-            onPress={() => setRole('player')}
-            style={{
-              padding: 10,
-              borderWidth: 1,
-              borderRadius: 10,
-              backgroundColor: role === 'player' ? '#000' : 'transparent',
-            }}
-          >
-            <Text style={{ color: role === 'player' ? '#fff' : '#000', fontWeight: '700' }}>Player</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setRole('coach')}
-            style={{
-              padding: 10,
-              borderWidth: 1,
-              borderRadius: 10,
-              backgroundColor: role === 'coach' ? '#000' : 'transparent',
-            }}
-          >
-            <Text style={{ color: role === 'coach' ? '#fff' : '#000', fontWeight: '700' }}>Coach</Text>
-          </Pressable>
+    <Screen scroll>
+      <View style={{ gap: theme.space.lg }}>
+        {/* Header */}
+        <View style={{ gap: 6 }}>
+          <H1>Invite kódok</H1>
+          <Muted>Adj hozzá új játékost vagy edzőt gyorsan egy kóddal.</Muted>
         </View>
 
-        <TextInput
-          value={maxUses}
-          onChangeText={setMaxUses}
-          placeholder="Max uses (0 = unlimited)"
-          keyboardType="numeric"
-          style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 10 }}
-        />
-
-        <TextInput
-          value={expiresHours}
-          onChangeText={setExpiresHours}
-          placeholder="Expires in hours (0 = never)"
-          keyboardType="numeric"
-          style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 10 }}
-        />
-
-        <Pressable
-          onPress={generate}
-          disabled={loading}
-          style={{ backgroundColor: '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Kód generálás</Text>
-        </Pressable>
-
-        <Pressable onPress={load} disabled={loading} style={{ padding: 10, alignItems: 'center' }}>
-          <Text style={{ fontWeight: '700' }}>Frissítés</Text>
-        </Pressable>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator />
-      ) : items.length === 0 ? (
-        <Text style={{ color: '#666' }}>Nincs invite.</Text>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {items.map((inv) => (
-            <View key={inv.id} style={{ padding: 12, borderWidth: 1, borderRadius: 12, gap: 4 }}>
-              <Text style={{ fontWeight: '900', fontSize: 18 }}>{inv.code}</Text>
-              <Text style={{ color: '#666' }}>Role: {inv.role}</Text>
-              <Text style={{ color: '#666' }}>
-                Uses: {inv.uses}/{inv.max_uses === 0 ? '∞' : inv.max_uses}
-              </Text>
-              <Text style={{ color: '#666' }}>
-                Expires: {inv.expires_at ? new Date(inv.expires_at).toLocaleString() : 'never'}
-              </Text>
-              <Text style={{ color: inv.disabled ? '#b00' : '#060', fontWeight: '700' }}>
-                {inv.disabled ? 'Disabled' : 'Active'}
-              </Text>
-
-              <Pressable
-                onPress={() => toggle(inv)}
-                style={{ padding: 10, borderWidth: 1, borderRadius: 10, alignItems: 'center' }}
-              >
-                <Text style={{ fontWeight: '700' }}>{inv.disabled ? 'Engedélyezés' : 'Tiltás'}</Text>
-              </Pressable>
+        {/* Create */}
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ gap: 4 }}>
+              <H2>Új invite</H2>
+              <Small>0 = korlátlan / soha nem jár le</Small>
             </View>
-          ))}
-        </View>
-      )}
-    </View>
+
+            {/* Role chips */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Button
+                title="Player"
+                onPress={() => setRole('player')}
+                variant={role === 'player' ? 'primary' : 'secondary'}
+                disabled={loading}
+              />
+              <Button
+                title="Coach"
+                onPress={() => setRole('coach')}
+                variant={role === 'coach' ? 'primary' : 'secondary'}
+                disabled={loading}
+              />
+            </View>
+
+            {/* Inputs */}
+            <View style={{ gap: theme.space.sm }}>
+              <View>
+                <H3>Max uses</H3>
+                <TextInput
+                  value={maxUses}
+                  onChangeText={setMaxUses}
+                  placeholder="0 = unlimited"
+                  keyboardType="numeric"
+                  placeholderTextColor={theme.color.subtle}
+                  style={{
+                    marginTop: 8,
+                    borderWidth: 1,
+                    borderColor: theme.color.border,
+                    borderRadius: theme.radius.md,
+                    padding: 12,
+                    color: theme.color.text,
+                    backgroundColor: 'transparent',
+                  }}
+                />
+              </View>
+
+              <View>
+                <H3>Lejárat (óra)</H3>
+                <TextInput
+                  value={expiresHours}
+                  onChangeText={setExpiresHours}
+                  placeholder="0 = never"
+                  keyboardType="numeric"
+                  placeholderTextColor={theme.color.subtle}
+                  style={{
+                    marginTop: 8,
+                    borderWidth: 1,
+                    borderColor: theme.color.border,
+                    borderRadius: theme.radius.md,
+                    padding: 12,
+                    color: theme.color.text,
+                    backgroundColor: 'transparent',
+                  }}
+                />
+              </View>
+
+              <Muted>
+                {expiresAt
+                  ? `Lejár: ${new Date(expiresAt).toLocaleString()}`
+                  : 'Lejárat: soha'}
+              </Muted>
+            </View>
+
+            <Button
+              title={loading ? 'Generálás…' : 'Kód generálás'}
+              onPress={generate}
+              disabled={loading}
+              variant="primary"
+            />
+
+            <Button
+              title={loading ? 'Frissítés…' : 'Frissítés'}
+              onPress={load}
+              disabled={loading}
+              variant="ghost"
+            />
+          </View>
+        </Card>
+
+        {/* List */}
+        <Card>
+          <View style={{ gap: theme.space.md }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <H2>Aktív kódok</H2>
+              <Small>{items.length} db</Small>
+            </View>
+
+            {loading ? (
+              <LoadingView label="Frissítés..." />
+            ) : items.length === 0 ? (
+              <EmptyState
+                title="Nincs invite"
+                description="Hozz létre egy új kódot fent, és itt meg fog jelenni."
+              />
+            ) : (
+              <View style={{ gap: 10 }}>
+                {items.map((inv) => {
+                  const usesText = `${inv.uses}/${inv.max_uses === 0 ? '∞' : inv.max_uses}`;
+                  const expiresText = inv.expires_at ? new Date(inv.expires_at).toLocaleString() : 'never';
+                  const status = inv.disabled ? 'Disabled' : 'Active';
+
+                  return (
+                    <Card key={inv.id}>
+                      <View style={{ gap: 10 }}>
+                        <View style={{ gap: 4 }}>
+                          <H2>{inv.code}</H2>
+                          <Muted>
+                            Role: {inv.role} • Uses: {usesText}
+                          </Muted>
+                          <Muted>Expires: {expiresText}</Muted>
+
+                          <Small>
+                            Állapot:{' '}
+                            <Small>
+                              {status}
+                            </Small>
+                          </Small>
+                        </View>
+
+                        <Button
+                          title={inv.disabled ? 'Engedélyezés' : 'Tiltás'}
+                          onPress={() => toggle(inv)}
+                          disabled={loading}
+                          variant={inv.disabled ? 'secondary' : 'danger'}
+                        />
+                      </View>
+                    </Card>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        </Card>
+      </View>
+    </Screen>
   );
 }

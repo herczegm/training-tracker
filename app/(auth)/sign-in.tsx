@@ -1,7 +1,14 @@
 import { Link } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, TextInput, View } from 'react-native';
 import { supabase } from '../../src/lib/supabase';
+
+// UI
+import { Screen } from '@/src/ui/Screen';
+import { Card } from '@/src/ui/Card';
+import { Button } from '@/src/ui/Button';
+import { H1, Muted, Small } from '@/src/ui/T';
+import { theme } from '@/src/ui/theme';
 
 export default function SignIn() {
   const [email, setEmail] = useState('');
@@ -23,40 +30,68 @@ export default function SignIn() {
     }
   };
 
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: theme.color.border,
+    backgroundColor: theme.color.surface,
+    color: theme.color.text,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.md,
+    fontWeight: '700' as const,
+  };
+
   return (
-    <View style={{ flex: 1, padding: 20, justifyContent: 'center', gap: 12 }}>
-      <Text style={{ fontSize: 26, fontWeight: '700' }}>Belépés</Text>
+    <Screen scroll>
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ gap: theme.space.lg }}>
+          <View style={{ gap: 6, alignItems: 'center' }}>
+            <H1>Belépés</H1>
+            <Muted>Jelentkezz be a folytatáshoz.</Muted>
+          </View>
 
-      <TextInput
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        style={{ borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 10 }}
-      />
+          <Card>
+            <View style={{ gap: theme.space.md }}>
+              <View style={{ gap: theme.space.sm }}>
+                <Small>Email</Small>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Email"
+                  placeholderTextColor={theme.color.subtle}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  style={inputStyle}
+                />
+              </View>
 
-      <TextInput
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Jelszó"
-        secureTextEntry
-        style={{ borderWidth: 1, borderColor: '#ccc', padding: 12, borderRadius: 10 }}
-      />
+              <View style={{ gap: theme.space.sm }}>
+                <Small>Jelszó</Small>
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Jelszó"
+                  placeholderTextColor={theme.color.subtle}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  style={inputStyle}
+                />
+              </View>
 
-      <Pressable
-        onPress={signIn}
-        disabled={loading}
-        style={{ backgroundColor: loading ? '#999' : '#000', padding: 12, borderRadius: 10, alignItems: 'center' }}
-      >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>
-          {loading ? 'Belépek…' : 'Belépés'}
-        </Text>
-      </Pressable>
+              <Button
+                title={loading ? 'Belépek…' : 'Belépés'}
+                onPress={signIn}
+                disabled={loading}
+              />
 
-      <Link href={{ pathname: '/(auth)/sign-up' as any }} style={{ color: '#444' }}>
-        Nincs fiókod? Regisztráció →
-      </Link>
-    </View>
+              <Link href={{ pathname: '/(auth)/sign-up' as any }} asChild>
+                <Button title="Nincs fiókod? Regisztráció →" variant="ghost" />
+              </Link>
+            </View>
+          </Card>
+        </View>
+      </View>
+    </Screen>
   );
 }
